@@ -1,0 +1,208 @@
+# ----------------------------------------
+# Transformation and ordering control
+# ----------------------------------------
+transform_type   <- "theta"   # options: "theta", "log_theta"
+order_statistic  <- "median"  # options: "mean", "median"
+
+# ----------------------------------------
+# Font size controls
+# ----------------------------------------
+title_label_size    <- 18
+y_axis_tissue_size  <- 15
+legend_title_size   <- 13
+nesting_label_size  <- 18
+legend_number_size  <- 8
+tile_number_size    <- 4
+
+# ----------------------------------------
+# Load required libraries (install if missing)
+# ----------------------------------------
+required_packages <- c("tidyverse", "ggplot2", "patchwork", "forcats")
+for (pkg in required_packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) install.packages(pkg, dependencies = TRUE)
+  library(pkg, character.only = TRUE)
+}
+
+# ----------------------------------------
+# Helper functions
+# ----------------------------------------
+apply_transform <- function(x, type) if (type == "log_theta") log10(1 + x) else x
+
+summarise_theta <- function(df) {
+  if (order_statistic == "mean") {
+    df %>% summarise(Theta = mean(Theta_Diff, na.rm = TRUE), .groups = "drop")
+  } else {
+    df %>% summarise(Theta = median(Theta_Diff, na.rm = TRUE), .groups = "drop")
+  }
+}
+
+# ----------------------------------------
+# Drosophila absolute theta differences
+# ----------------------------------------
+dros_data <- bind_rows(
+  Drosophilia_Expression_Theta_DF_All %>%
+    filter(PiXi_Test_Class == "Diverged",
+           Pse_Nested_Unnested == "Nested",
+           Mel_Nested_Unnested == "Nested") %>%
+    mutate(Nesting_Status = "Nested"),
+  Drosophilia_Expression_Theta_DF_All %>%
+    filter(PiXi_Test_Class == "Diverged",
+           Pse_Nested_Unnested == "Unnested",
+           Mel_Nested_Unnested == "Unnested") %>%
+    mutate(Nesting_Status = "Unnested")
+) %>%
+  mutate(
+    Diff_fHead   = abs(PiXi_Test_Theta_11 - PiXi_Test_Theta_21),
+    Diff_Ovary   = abs(PiXi_Test_Theta_12 - PiXi_Test_Theta_22),
+    Diff_mHead   = abs(PiXi_Test_Theta_13 - PiXi_Test_Theta_23),
+    Diff_Testis  = abs(PiXi_Test_Theta_14 - PiXi_Test_Theta_24),
+    Diff_Accg    = abs(PiXi_Test_Theta_15 - PiXi_Test_Theta_25),
+    Diff_Carcass = abs(PiXi_Test_Theta_16 - PiXi_Test_Theta_26)
+  ) %>%
+  pivot_longer(starts_with("Diff_"), names_to = "Tissue", values_to = "Theta_Diff") %>%
+  mutate(Tissue = gsub("Diff_", "", Tissue)) %>%
+  group_by(Nesting_Status, Tissue) %>%
+  summarise_theta() %>%
+  mutate(
+    Theta = apply_transform(Theta, transform_type),
+    Species = "Drosophila",
+    Nesting_Status = stringr::str_trim(stringr::str_remove(Nesting_Status, "\\s*-\\s*$")),
+    Nesting_Status = factor(Nesting_Status, levels = c("Nested", "Unnested")),
+    Tissue = factor(Tissue, levels = c("fHead", "mHead", "Carcass", "Ovary", "Accg", "Testis"))
+  )
+
+# ----------------------------------------
+# Mammals absolute theta differences
+# ----------------------------------------
+mam_data <- bind_rows(
+  Mammal_Expression_Theta_DF_All %>%
+    filter(PiXi_Test_Class == "Diverged",
+           Mouse_Nested_Unnested == "Nested",
+           Human_Nested_Unnested == "Nested") %>%
+    mutate(Nesting_Status = "Nested"),
+  Mammal_Expression_Theta_DF_All %>%
+    filter(PiXi_Test_Class == "Diverged",
+           Mouse_Nested_Unnested == "Unnested",
+           Human_Nested_Unnested == "Unnested") %>%
+    mutate(Nesting_Status = "Unnested")
+) %>%
+  mutate(
+    Diff_Brain  = abs(PiXi_Test_Theta11 - PiXi_Test_Theta21),
+    Diff_Heart  = abs(PiXi_Test_Theta12 - PiXi_Test_Theta22),
+    Diff_Kidney = abs(PiXi_Test_Theta13 - PiXi_Test_Theta23),
+    Diff_Liver  = abs(PiXi_Test_Theta14 - PiXi_Test_Theta24),
+    Diff_Lung   = abs(PiXi_Test_Theta15 - PiXi_Test_Theta25),
+    Diff_Colon  = abs(PiXi_Test_Theta16 - PiXi_Test_Theta26),
+    Diff_Spleen = abs(PiXi_Test_Theta17 - PiXi_Test_Theta27),
+    Diff_Testis = abs(PiXi_Test_Theta18 - PiXi_Test_Theta28)
+  ) %>%
+  pivot_longer(starts_with("Diff_"), names_to = "Tissue", values_to = "Theta_Diff") %>%
+  mutate(Tissue = gsub("Diff_", "", Tissue)) %>%
+  group_by(Nesting_Status, Tissue) %>%
+  summarise_theta() %>%
+  mutate(
+    Theta = apply_transform(Theta, transform_type),
+    Species = "Mammals",
+    Nesting_Status = stringr::str_trim(stringr::str_remove(Nesting_Status, "\\s*-\\s*$")),
+    Nesting_Status = factor(Nesting_Status, levels = c("Nested", "Unnested")),
+    Tissue = factor(Tissue, levels = c("Brain", "Heart", "Lung", "Colon", "Liver", "Kidney", "Spleen", "Testis"))
+  )
+
+# ----------------------------------------
+# Plot function
+# ----------------------------------------
+tile_label_font_size <- 17
+font_family <- "Arial"
+
+plot_species_panel <- function(df, species_title,
+                               show_y_labels = TRUE,
+                               show_legend = TRUE,
+                               title_face = "bold.italic") {
+
+  ggplot(df, aes(x = Tissue, y = Nesting_Status, fill = Theta)) +
+    geom_tile(color = "white", width = 0.9, height = 0.9, show.legend = show_legend) +
+    geom_text(aes(label = sprintf("%.2f", Theta)),
+              size = tile_number_size, family = font_family) +
+    scale_y_discrete(
+      limits = c("Nested", "Unnested"),
+      labels = c("Nested" = "Nested", "Unnested" = "Unnested")
+    ) +
+    scale_fill_gradient(
+      low = "#deebf7", high = "#08519c",
+      limits   = range(df$Theta, na.rm = TRUE),
+      guide = guide_colorbar(
+        barheight = unit(5, "cm"),
+        nbin = 20,
+        title.position = "top"
+      )
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.y  = if (show_y_labels)
+        element_text(size = nesting_label_size, family = font_family, face = "bold")
+      else element_blank(),
+      axis.ticks.y = element_blank(),
+      axis.title.y = element_blank(),
+      axis.text.x  = element_text(angle = 45, hjust = 1,
+                                  size = tile_label_font_size - 4,
+                                  family = font_family),
+      axis.title.x = element_blank(),
+      panel.grid   = element_blank(),
+      plot.title   = element_text(size = title_label_size, face = title_face, family = font_family),
+      legend.position = if (show_legend) "right" else "none",
+      legend.title    = element_text(size = legend_title_size, family = font_family, face = "bold"),
+      legend.text     = element_text(size = legend_number_size, family = font_family),
+      legend.margin   = margin(l = 40, r = 40),
+      plot.margin     = margin(t = 30, r = 30, b = 30, l = 30),
+      # no aspect.ratio manipulation to avoid shrinking squares
+      # tile size controlled by panel width + coord_fixed below
+    ) +
+    labs(
+      title = species_title,
+      fill = if (transform_type == "log_theta")
+        expression(log[10](1 + "|" ~ theta[phantom(0)*1] ~ "\u2212" ~ theta[phantom(0)*2] ~ "|"))
+      else
+        expression("|" ~ theta[phantom(0)*1] ~ "\u2212" ~ theta[phantom(0)*2] ~ "|")
+    ) +
+    coord_fixed(ratio = 1)
+}
+
+# ----------------------------------------
+# Build panels
+# ----------------------------------------
+p_dros <- plot_species_panel(
+  dros_data,
+  "Drosophila",
+  show_y_labels = TRUE,
+  show_legend = FALSE,
+  title_face = "bold.italic"
+)
+
+p_mam <- plot_species_panel(
+  mam_data,
+  "Mammals",   # updated title
+  show_y_labels = FALSE,
+  show_legend = TRUE,
+  title_face = "bold"
+)
+
+# ----------------------------------------
+# Combine panels (match tile size across panels)
+# ----------------------------------------
+n_dros_cols <- nlevels(dros_data$Tissue)
+n_mam_cols  <- nlevels(mam_data$Tissue)
+
+combined_plot <- p_dros + p_mam +
+  plot_layout(ncol = 2, guides = "collect", widths = c(n_dros_cols, n_mam_cols)) &
+  theme(legend.position = "right")
+
+# ----------------------------------------
+# Save plot
+# ----------------------------------------
+ggsave(
+  "Plots/tile_grid_drosophila_mammals_abs_theta_per_gene_ordered.png",
+  combined_plot,
+  width = 16,
+  height = 4,
+  dpi = 600
+)

@@ -1,0 +1,256 @@
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+
+# -----------------------
+# Global settings — tuned for LOG scale
+# -----------------------
+xyLabelSize    <- 24
+plots_dir      <- file.path(getwd(), "Plots")
+if (!dir.exists(plots_dir)) dir.create(plots_dir)
+
+# Set parameter for permutation test statistic
+#perm_testVar = "median"
+ perm_testVar = "mean"
+
+stat = perm_testVar
+
+# Axis and annotation positions for log10-transformed values
+global_y_bottom    <- -1.6
+global_y_limit     <- 1.0
+bracket_y          <- 0.6
+asterisk_y         <- 0.75
+bracket_tip_offset <- 0.05
+
+# Common theta columns
+theta_columns <- paste0("PiXi_Test_Theta_", c(11:16, 21:26))
+
+# ------------------------------------------------------------
+# Permutation test function (10,000 permutations)
+# User can choose "median" (default) or "mean"
+# ------------------------------------------------------------
+perm_test_diff <- function(values, groups, stat = "median", n_perm = 10000) {
+
+  # Validate inputs
+  stopifnot(length(values) == length(groups))
+  stopifnot(nlevels(groups) == 2)
+  stopifnot(stat %in% c("median", "mean"))
+
+  # Choose the statistic function
+  stat_fun <- switch(stat,
+                     "median" = median,
+                     "mean"   = mean)
+
+  # Extract observed groups
+  g1 <- values[groups == levels(groups)[1]]
+  g2 <- values[groups == levels(groups)[2]]
+
+  # Observed statistic (median or mean difference)
+  obs <- stat_fun(g1) - stat_fun(g2)
+
+  # Permutation distribution
+  perm_stats <- replicate(n_perm, {
+
+    # Shuffle labels
+    shuffled <- sample(groups)
+
+    # Reassign values to permuted groups
+    g1p <- values[shuffled == levels(groups)[1]]
+    g2p <- values[shuffled == levels(groups)[2]]
+
+    # Permuted statistic (median or mean difference)
+    stat_fun(g1p) - stat_fun(g2p)
+  })
+
+  # Two-sided p-value
+  mean(abs(perm_stats) >= abs(obs))
+}
+
+
+# -----------------------
+# Significance label helper
+# -----------------------
+sig_label <- function(p) {
+  case_when(
+    p < 0.001 ~ "***",
+    p < 0.01  ~ "**",
+    p < 0.05  ~ "*",
+    TRUE      ~ "NS"
+  )
+}
+
+# ---------- Plot A: Gene Age ----------
+filtered_data_age <- Drosophilia_Expression_Theta_DF_All %>%
+  filter(PiXi_Test_Class == "Diverged",
+         Pse_Nested_Unnested == "Nested",
+         Mel_Nested_Unnested == "Nested") %>%
+  select(Mel_Young_Old, all_of(theta_columns)) %>%
+  na.omit() %>%
+  mutate(
+    ThetaDiff_fHead   = abs(PiXi_Test_Theta_11 - PiXi_Test_Theta_21),
+    ThetaDiff_ovary   = abs(PiXi_Test_Theta_12 - PiXi_Test_Theta_22),
+    ThetaDiff_mHead   = abs(PiXi_Test_Theta_13 - PiXi_Test_Theta_23),
+    ThetaDiff_testis  = abs(PiXi_Test_Theta_14 - PiXi_Test_Theta_24),
+    ThetaDiff_accg    = abs(PiXi_Test_Theta_15 - PiXi_Test_Theta_25),
+    ThetaDiff_carcass = abs(PiXi_Test_Theta_16 - PiXi_Test_Theta_26)
+  ) %>%
+  rowwise() %>%
+  mutate(Theta_Diff = log10(mean(c_across(starts_with("ThetaDiff_")), na.rm = TRUE))) %>%
+  ungroup() %>%
+  mutate(Mel_Young_Old = factor(Mel_Young_Old, levels = c("Young", "Old")))
+
+# Permutation test
+p_value_age <- perm_test_diff(
+  values = filtered_data_age$Theta_Diff,
+  groups = filtered_data_age$Mel_Young_Old,
+  stat = perm_testVar
+)
+sig_label_age <- sig_label(p_value_age)
+
+plot_gene_age <- ggplot(filtered_data_age, aes(x = Mel_Young_Old, y = Theta_Diff, fill = Mel_Young_Old)) +
+  geom_boxplot(notch = TRUE, outlier.shape = NA, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 2, y = bracket_y, yend = bracket_y, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 1, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("segment", x = 2, xend = 2, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("text", x = 1.5, y = asterisk_y, label = sig_label_age, size = 9) +
+  coord_cartesian(ylim = c(global_y_bottom, global_y_limit)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x  = element_text(size = xyLabelSize),
+    axis.text.y  = element_text(size = xyLabelSize),
+    axis.ticks.x = element_line(),
+    axis.ticks.y = element_line(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "none",
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1.2)
+  ) +
+  scale_fill_manual(values = c("Young" = "#CC79A7", "Old" = "#F0E442"))
+
+# ---------- Plot B: Tissue Type ----------
+filtered_data_tissue <- Drosophilia_Expression_Theta_DF_All %>%
+  filter(PiXi_Test_Class == "Diverged",
+         Pse_Nested_Unnested == "Nested",
+         Mel_Nested_Unnested == "Nested",
+         Mel_External_Internal %in% c("Internal", "External")) %>%
+  select(Mel_External_Internal, all_of(theta_columns)) %>%
+  na.omit() %>%
+  mutate(
+    ThetaDiff_fHead   = abs(PiXi_Test_Theta_11 - PiXi_Test_Theta_21),
+    ThetaDiff_ovary   = abs(PiXi_Test_Theta_12 - PiXi_Test_Theta_22),
+    ThetaDiff_mHead   = abs(PiXi_Test_Theta_13 - PiXi_Test_Theta_23),
+    ThetaDiff_testis  = abs(PiXi_Test_Theta_14 - PiXi_Test_Theta_24),
+    ThetaDiff_accg    = abs(PiXi_Test_Theta_15 - PiXi_Test_Theta_25),
+    ThetaDiff_carcass = abs(PiXi_Test_Theta_16 - PiXi_Test_Theta_26)
+  ) %>%
+  rowwise() %>%
+  mutate(Theta_Diff = log10(mean(c_across(starts_with("ThetaDiff_")), na.rm = TRUE))) %>%
+  ungroup() %>%
+  mutate(Mel_External_Internal = factor(Mel_External_Internal, levels = c("Internal", "External")))
+
+# Permutation test
+p_value_tissue <- perm_test_diff(
+  values = filtered_data_tissue$Theta_Diff,
+  groups = filtered_data_tissue$Mel_External_Internal, 
+  stat = perm_testVar
+)
+sig_label_tissue <- sig_label(p_value_tissue)
+
+plot_tissue_type <- ggplot(filtered_data_tissue, aes(x = Mel_External_Internal, y = Theta_Diff, fill = Mel_External_Internal)) +
+  geom_boxplot(notch = TRUE, outlier.shape = NA, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 2, y = bracket_y, yend = bracket_y, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 1, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("segment", x = 2, xend = 2, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("text", x = 1.5, y = asterisk_y, label = sig_label_tissue, size = 9) +
+  coord_cartesian(ylim = c(global_y_bottom, global_y_limit)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x  = element_text(size = xyLabelSize),
+    axis.text.y  = element_text(size = xyLabelSize),
+    axis.ticks.x = element_line(),
+    axis.ticks.y = element_line(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "none",
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1.2)
+  ) +
+  scale_fill_manual(values = c("Internal" = "#6A51A3", "External" = "#999999"))
+
+# ---------- Plot C: Architecture ----------
+filtered_data_arch <- Drosophilia_Expression_Theta_DF_All %>%
+  filter(PiXi_Test_Class == "Diverged") %>%
+  mutate(
+    Architecture = if_else(
+      Mel_Nested_Unnested == "Nested" & Pse_Nested_Unnested == "Nested",
+      "Nested", "Unnested"
+    )
+  ) %>%
+  select(Architecture, all_of(theta_columns)) %>%
+  na.omit() %>%
+  mutate(
+    ThetaDiff_fHead   = abs(PiXi_Test_Theta_11 - PiXi_Test_Theta_21),
+    ThetaDiff_ovary   = abs(PiXi_Test_Theta_12 - PiXi_Test_Theta_22),
+    ThetaDiff_mHead   = abs(PiXi_Test_Theta_13 - PiXi_Test_Theta_23),
+    ThetaDiff_testis  = abs(PiXi_Test_Theta_14 - PiXi_Test_Theta_24),
+    ThetaDiff_accg    = abs(PiXi_Test_Theta_15 - PiXi_Test_Theta_25),
+    ThetaDiff_carcass = abs(PiXi_Test_Theta_16 - PiXi_Test_Theta_26)
+  ) %>%
+  rowwise() %>%
+  mutate(Theta_Diff = log10(mean(c_across(starts_with("ThetaDiff_")), na.rm = TRUE))) %>%
+  ungroup() %>%
+  mutate(Architecture = factor(Architecture, levels = c("Unnested", "Nested")))
+
+# Permutation test
+p_value_arch <- perm_test_diff(
+  values = filtered_data_arch$Theta_Diff,
+  groups = filtered_data_arch$Architecture,
+  stat = perm_testVar
+)
+sig_label_arch <- sig_label(p_value_arch)
+
+plot_architecture <- ggplot(filtered_data_arch, aes(x = Architecture, y = Theta_Diff, fill = Architecture)) +
+  geom_boxplot(notch = TRUE, outlier.shape = NA, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 2, y = bracket_y, yend = bracket_y, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 1, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("segment", x = 2, xend = 2, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("text", x = 1.5, y = asterisk_y, label = sig_label_arch, size = 9) +
+  coord_cartesian(ylim = c(global_y_bottom, global_y_limit)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x  = element_text(size = xyLabelSize),
+    axis.text.y  = element_text(size = xyLabelSize),
+    axis.ticks.x = element_line(),
+    axis.ticks.y = element_line(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "none",
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1.2)
+  ) +
+  scale_fill_manual(values = c("Unnested" = "#0072B2", "Nested" = "#E69F00"))
+
+combined_plot_drosophila <-
+  (plot_architecture +
+     theme(axis.text.y  = element_text(size = xyLabelSize),
+           axis.ticks.y = element_line(),
+           axis.text.x  = element_text(size = xyLabelSize),
+           axis.ticks.x = element_line())) +
+  (plot_tissue_type +
+     theme(axis.title.y = element_blank(),
+           axis.text.y  = element_blank(),
+           axis.ticks.y = element_blank(),
+           axis.text.x  = element_text(size = xyLabelSize),
+           axis.ticks.x = element_line())) +
+  (plot_gene_age +
+     theme(axis.title.y = element_blank(),
+           axis.text.y  = element_blank(),
+           axis.ticks.y = element_blank(),
+           axis.text.x  = element_text(size = xyLabelSize),
+           axis.ticks.x = element_line())) +
+  plot_layout(ncol = 3)
+
+ggsave(filename = file.path(plots_dir, "Image_drosophila_combined_theta_divergence_panels.png"),
+       plot = combined_plot_drosophila,
+       width = 24, height = 6, dpi = 300)

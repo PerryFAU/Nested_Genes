@@ -1,0 +1,213 @@
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+
+# -----------------------
+# Global settings — tuned for LOG scale
+# -----------------------
+xyLabelSize    <- 24
+plots_dir      <- file.path(getwd(), "Plots")
+if (!dir.exists(plots_dir)) dir.create(plots_dir)
+
+global_y_bottom    <- -1.6    # bottom of y-axis
+global_y_limit     <- 1.0     # top of y-axis
+bracket_y          <- 0.6     # horizontal bracket height
+asterisk_y         <- 0.75     # asterisk label height
+bracket_tip_offset <- 0.05    # vertical tick length for bracket ends
+
+theta_columns <- paste0("PiXi_Test_Theta", c(11:18, 21:28))
+
+# ---------- Plot A: Gene Age ----------
+filtered_data_age <- Mammal_Expression_Theta_DF_All %>%
+  filter(PiXi_Test_Class == "Diverged",
+         Mouse_Nested_Unnested == "Nested",
+         Human_Nested_Unnested == "Nested") %>%
+  select(Human_Young_Old, all_of(theta_columns)) %>%
+  na.omit() %>%
+  mutate(across(theta_columns, as.numeric)) %>%
+  mutate(
+    ThetaDiff_Brain  = abs(PiXi_Test_Theta11 - PiXi_Test_Theta21),
+    ThetaDiff_Heart  = abs(PiXi_Test_Theta12 - PiXi_Test_Theta22),
+    ThetaDiff_Kidney = abs(PiXi_Test_Theta13 - PiXi_Test_Theta23),
+    ThetaDiff_Liver  = abs(PiXi_Test_Theta14 - PiXi_Test_Theta24),
+    ThetaDiff_Lung   = abs(PiXi_Test_Theta15 - PiXi_Test_Theta25),
+    ThetaDiff_Colon  = abs(PiXi_Test_Theta16 - PiXi_Test_Theta26),
+    ThetaDiff_Spleen = abs(PiXi_Test_Theta17 - PiXi_Test_Theta27),
+    ThetaDiff_Testis = abs(PiXi_Test_Theta18 - PiXi_Test_Theta28)
+  ) %>%
+  rowwise() %>%
+  mutate(Theta_Diff = log10(mean(c_across(starts_with("ThetaDiff_")), na.rm = TRUE))) %>%
+  ungroup() %>%
+  mutate(Human_Young_Old = factor(Human_Young_Old, levels = c("Young", "Old")))
+
+p_value_age <- wilcox.test(Theta_Diff ~ Human_Young_Old, data = filtered_data_age)$p.value
+sig_label_age <- case_when(
+  p_value_age < 0.001 ~ "***",
+  p_value_age < 0.01  ~ "**",
+  p_value_age < 0.05  ~ "*",
+  TRUE                ~ "NS"
+)
+
+plot_gene_age <- ggplot(filtered_data_age, aes(x = Human_Young_Old, y = Theta_Diff, fill = Human_Young_Old)) +
+  geom_boxplot(notch = TRUE, outlier.shape = NA, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 2, y = bracket_y, yend = bracket_y, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 1, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("segment", x = 2, xend = 2, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("text", x = 1.5, y = asterisk_y, label = sig_label_age, size = 9) +
+  coord_cartesian(ylim = c(global_y_bottom, global_y_limit)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x  = element_text(size = xyLabelSize),
+    axis.text.y  = element_text(size = xyLabelSize),
+    axis.ticks.x = element_line(),
+    axis.ticks.y = element_line(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "none",
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1.2)
+  ) +
+  scale_fill_manual(values = c("Young" = "#CC79A7", "Old" = "#F0E442"))
+
+# ---------- Plot B: Tissue Type ----------
+filtered_data_tissue <- Mammal_Expression_Theta_DF_All %>%
+  filter(PiXi_Test_Class == "Diverged",
+         Mouse_Nested_Unnested == "Nested",
+         Human_Nested_Unnested == "Nested",
+         Human_External_Internal %in% c("Internal", "External")) %>%
+  select(Human_External_Internal, all_of(theta_columns)) %>%
+  na.omit() %>%
+  mutate(across(theta_columns, as.numeric)) %>%
+  mutate(
+    ThetaDiff_Brain  = abs(PiXi_Test_Theta11 - PiXi_Test_Theta21),
+    ThetaDiff_Heart  = abs(PiXi_Test_Theta12 - PiXi_Test_Theta22),
+    ThetaDiff_Kidney = abs(PiXi_Test_Theta13 - PiXi_Test_Theta23),
+    ThetaDiff_Liver  = abs(PiXi_Test_Theta14 - PiXi_Test_Theta24),
+    ThetaDiff_Lung   = abs(PiXi_Test_Theta15 - PiXi_Test_Theta25),
+    ThetaDiff_Colon  = abs(PiXi_Test_Theta16 - PiXi_Test_Theta26),
+    ThetaDiff_Spleen = abs(PiXi_Test_Theta17 - PiXi_Test_Theta27),
+    ThetaDiff_Testis = abs(PiXi_Test_Theta18 - PiXi_Test_Theta28)
+  ) %>%
+  rowwise() %>%
+  mutate(Theta_Diff = log10(mean(c_across(starts_with("ThetaDiff_")), na.rm = TRUE))) %>%
+  ungroup() %>%
+  mutate(Human_External_Internal = factor(Human_External_Internal, levels = c("Internal", "External")))
+
+p_value_tissue <- wilcox.test(Theta_Diff ~ Human_External_Internal, data = filtered_data_tissue)$p.value
+sig_label_tissue <- case_when(
+  p_value_tissue < 0.001 ~ "***",
+  p_value_tissue < 0.01  ~ "**",
+  p_value_tissue < 0.05  ~ "*",
+  TRUE                   ~ "NS"
+)
+
+plot_tissue_type <- ggplot(filtered_data_tissue, aes(x = Human_External_Internal, y = Theta_Diff, fill = Human_External_Internal)) +
+  geom_boxplot(notch = TRUE, outlier.shape = NA, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 2, y = bracket_y, yend = bracket_y, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 1, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("segment", x = 2, xend = 2, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("text", x = 1.5, y = asterisk_y, label = sig_label_tissue, size = 9) +
+  coord_cartesian(ylim = c(global_y_bottom, global_y_limit)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x  = element_text(size = xyLabelSize),
+    axis.text.y  = element_text(size = xyLabelSize),
+    axis.ticks.x = element_line(),
+    axis.ticks.y = element_line(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "none",
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1.2)
+  ) +
+  
+  #scale_fill_manual(values = c("Internal" = "#009E73", "External" = "#D55E00"))
+  #scale_fill_manual(values = c("Internal" = "#56B4E9", "External" = "#CC79A7"))
+  #scale_fill_manual(values = c("Internal" = "#999999", "External" = "#E69F00"))
+  #scale_fill_manual(values = c("Internal" = "#6A51A3", "External" = "#FFD700"))
+  scale_fill_manual(values = c("Internal" = "#6A51A3", "External" = "#999999"))
+
+# ---------- Plot C: Architecture ----------
+filtered_data_arch <- Mammal_Expression_Theta_DF_All %>%
+  filter(PiXi_Test_Class == "Diverged") %>%
+  mutate(
+    Architecture = if_else(
+      Human_Nested_Unnested == "Nested" & Mouse_Nested_Unnested == "Nested",
+      "Nested", "Unnested"
+    )
+  ) %>%
+  select(Architecture, all_of(theta_columns)) %>%
+  na.omit() %>%
+  mutate(across(theta_columns, as.numeric)) %>%
+  mutate(
+    ThetaDiff_Brain  = abs(PiXi_Test_Theta11 - PiXi_Test_Theta21),
+    ThetaDiff_Heart  = abs(PiXi_Test_Theta12 - PiXi_Test_Theta22),
+    ThetaDiff_Kidney = abs(PiXi_Test_Theta13 - PiXi_Test_Theta23),
+    ThetaDiff_Liver  = abs(PiXi_Test_Theta14 - PiXi_Test_Theta24),
+    ThetaDiff_Lung   = abs(PiXi_Test_Theta15 - PiXi_Test_Theta25),
+    ThetaDiff_Colon  = abs(PiXi_Test_Theta16 - PiXi_Test_Theta26),
+    ThetaDiff_Spleen = abs(PiXi_Test_Theta17 - PiXi_Test_Theta27),
+    ThetaDiff_Testis = abs(PiXi_Test_Theta18 - PiXi_Test_Theta28)
+  ) %>%
+  rowwise() %>%
+  mutate(Theta_Diff = log10(mean(c_across(starts_with("ThetaDiff_")), na.rm = TRUE))) %>%
+  ungroup() %>%
+  mutate(Architecture = factor(Architecture, levels = c("Unnested", "Nested")))
+
+# ---------- Stats ----------
+p_value_arch <- wilcox.test(Theta_Diff ~ Architecture, data = filtered_data_arch)$p.value
+sig_label_arch <- case_when(
+  p_value_arch < 0.001 ~ "***",
+  p_value_arch < 0.01  ~ "**",
+  p_value_arch < 0.05  ~ "*",
+  TRUE                 ~ "NS"
+)
+
+plot_architecture <- ggplot(filtered_data_arch, aes(x = Architecture, y = Theta_Diff, fill = Architecture)) +
+  geom_boxplot(notch = TRUE, outlier.shape = NA, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 2, y = bracket_y, yend = bracket_y, linewidth = 1.2) +
+  annotate("segment", x = 1, xend = 1, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("segment", x = 2, xend = 2, y = bracket_y, yend = bracket_y - bracket_tip_offset, linewidth = 1.2) +
+  annotate("text", x = 1.5, y = asterisk_y, label = sig_label_arch, size = 9) +
+  coord_cartesian(ylim = c(global_y_bottom, global_y_limit)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x  = element_text(size = xyLabelSize),
+    axis.text.y  = element_text(size = xyLabelSize),
+    axis.ticks.x = element_line(),
+    axis.ticks.y = element_line(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "none",
+    panel.grid = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1.2)
+  ) +
+  scale_fill_manual(values = c("Unnested" = "#0072B2", "Nested" = "#E69F00"))
+
+
+combined_plot_mammal <-
+  (plot_architecture +
+     theme(axis.text.y  = element_text(size = xyLabelSize),
+           axis.ticks.y = element_line(),
+           axis.text.x  = element_text(size = xyLabelSize),
+           axis.ticks.x = element_line())) +
+  (plot_tissue_type +
+     theme(axis.title.y = element_blank(),
+           axis.text.y  = element_blank(),
+           axis.ticks.y = element_blank(),
+           axis.text.x  = element_text(size = xyLabelSize),
+           axis.ticks.x = element_line())) +
+  (plot_gene_age +
+     theme(axis.title.y = element_blank(),
+           axis.text.y  = element_blank(),
+           axis.ticks.y = element_blank(),
+           axis.text.x  = element_text(size = xyLabelSize),
+           axis.ticks.x = element_line())) +
+  plot_layout(ncol = 3) #+
+  #plot_annotation(tag_levels = "A") &
+  #theme(plot.tag = element_text(size = 24))
+
+# Save combined mammal plot
+ggsave(filename = file.path(plots_dir, "Image_mammal_combined_theta_divergence_panels.png"),
+       plot = combined_plot_mammal,
+       width = 24, height = 6, dpi = 300)

@@ -1,0 +1,152 @@
+# ----------------------------------------
+# User‑controlled layout variables
+# ----------------------------------------
+label_size       <- 18    # caption size
+panel_label_size <- 28    # panel labels A, B
+bar_width        <- 0.8   # thickness of bars (0–1, independent of spacing)
+n_top            <- 15    # number of terms per panel (reduce to tighten vertical density)
+fig_width        <- 18    # output figure width (inches)
+fig_height       <- 12    # output figure height (inches)
+
+# Independent panel label horizontal positions (normalized: 0 = left, 1 = right)
+panel_A_x <- 0.03  # horizontal position of label A
+panel_B_x <- 0.01  # horizontal position of label B
+
+# ----------------------------------------
+# Load required libraries (install if missing)
+# ----------------------------------------
+required_packages <- c("tidyverse", "stringr", "forcats", "readxl", "patchwork")
+
+for (pkg in required_packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg, dependencies = TRUE)
+  }
+  library(pkg, character.only = TRUE)
+}
+
+# ----------------------------------------
+# Shared fill scale (0–4 range, 0.5 step, stretched legend)
+# ----------------------------------------
+shared_fill <- list(
+  scale_fill_gradient(
+    low = "#D6EAF8", high = "#0072B2",
+    limits = c(0, 4),
+    breaks = seq(0, 4, by = 0.5)
+  ),
+  guides(fill = guide_colorbar(
+    title.position = "top",
+    title.hjust = 0.5,
+    barheight = unit(200, "pt"),
+    ticks.colour = "black",
+    frame.colour = "black"
+  ))
+)
+
+# ----------------------------------------
+# Function to make barplot
+# ----------------------------------------
+make_barplot <- function(file_path, sheet_name,
+                         suppress_x_title = FALSE,
+                         suppress_y_title = FALSE) {
+  
+  df <- read_excel(file_path, sheet = sheet_name)
+  
+  df_clean <- df %>%
+    distinct(Term, .keep_all = TRUE) %>%
+    arrange(desc(Log_Transform_Benjamini)) %>%
+    slice_head(n = n_top) %>%
+    mutate(Log2_FoldEnrichment = log2(`Fold Enrichment`))
+  
+  p <- ggplot(df_clean, aes(x = fct_reorder(Term, Log_Transform_Benjamini),
+                            y = Log_Transform_Benjamini,
+                            fill = Log2_FoldEnrichment)) +
+    geom_col(width = bar_width) +
+    coord_flip() +
+    shared_fill +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "red", linewidth = 1) +
+    theme_minimal(base_size = 12) +
+    labs(
+      title = NULL,
+      x = NULL,
+      y = NULL,
+      fill = "log₂ (fold enrichment)"
+    ) +
+    theme(
+      plot.title  = element_blank(),
+      axis.text.y = element_text(size = 14, color = "black"),
+      axis.text.x = element_text(size = 14, color = "black"),
+      axis.title.y = element_blank(),
+      axis.title.x = if (suppress_x_title) element_blank() else element_text(size = 20, color = "black", face = "bold", margin = margin(t = 12)),
+      legend.title = element_text(face = "bold", size = 14),
+      legend.text  = element_text(face = "bold", color = "black", size = 10),
+      panel.grid   = element_blank()  # ← removes grid lines
+    )
+  
+  return(p)
+}
+
+# ----------------------------------------
+# Input paths
+# ----------------------------------------
+plots_dir <- file.path(getwd())
+file_path <- file.path(plots_dir, "DAVIDFunctAnnotClusterReport_12_12_25.xlsx")
+
+# ----------------------------------------
+# Drosophila panels without titles
+# ----------------------------------------
+p1 <- make_barplot(file_path, "Drosophila_Unnested_Diverged",
+                   suppress_x_title = FALSE, suppress_y_title = TRUE)
+
+p2 <- make_barplot(file_path, "Drosophila_Nested_Diverged",
+                   suppress_x_title = TRUE, suppress_y_title = TRUE)
+
+# ----------------------------------------
+# Assign per‑panel tags and positions
+# ----------------------------------------
+p1 <- p1 +
+  labs(tag = "A") +
+  theme(
+    plot.tag = element_text(size = panel_label_size, face = "bold"),
+    plot.tag.position = c(panel_A_x, 1)
+  )
+
+p2 <- p2 +
+  labs(tag = "B") +
+  theme(
+    plot.tag = element_text(size = panel_label_size, face = "bold"),
+    plot.tag.position = c(panel_B_x, 1)
+  )
+
+# ----------------------------------------
+# Combine with shared legend and bottom-centered caption
+# ----------------------------------------
+combined_plot <- (p1 + p2) +
+  plot_layout(ncol = 2, guides = "collect") &
+  theme(
+    legend.position = "right",
+    plot.title = element_blank()
+  )
+
+combined_plot <- combined_plot +
+  plot_annotation(
+    caption = "−log₁₀ (adjusted 𝒑-value)",
+    theme = theme(
+      plot.caption = element_text(size = label_size, face = "bold",
+                                  hjust = 0.5, margin = margin(t = 20))
+    )
+  )
+
+# ----------------------------------------
+# Output path
+# ----------------------------------------
+plots_dir <- file.path(getwd(), "Plots")
+if (!dir.exists(plots_dir)) dir.create(plots_dir)
+
+# ----------------------------------------
+# Save (600 dpi)
+# ----------------------------------------
+ggsave(
+  filename = file.path(plots_dir, "Drosophila_Biological_Functions_BlueUnified_Log2FoldEnrichment_Top16_Legend0to4_by0.5_SignificanceLine_BoldLabels_PanelAB.png"),
+  plot = combined_plot,
+  width = fig_width, height = fig_height, dpi = 600
+)

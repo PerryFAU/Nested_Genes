@@ -1,0 +1,238 @@
+library(cowplot)
+library(ggplot2)
+
+# -----------------------
+# Helper: full-width header with no internal margins
+# -----------------------
+make_boxed_label <- function(text, size = 10, box_fill = "gray85") {
+  ggplot() +
+    geom_rect(aes(xmin = 0, xmax = 1, ymin = 0, ymax = 1),
+              fill = box_fill, color = NA) +
+    annotate("text", x = 0.5, y = 0.5, label = text,
+             fontface = "bold", size = size) +
+    scale_x_continuous(expand = c(0,0), limits = c(0,1)) +
+    scale_y_continuous(expand = c(0,0), limits = c(0,1)) +
+    theme_void() +
+    theme(plot.margin = margin(0, 0, 0, 0))
+}
+
+# -----------------------
+# Helper: vertical boxed label for row names
+# -----------------------
+make_vertical_boxed_label <- function(text, size = 9, box_fill = "gray85", fontface = "bold") {
+  ggplot() +
+    geom_rect(aes(xmin = 0, xmax = 1, ymin = 0, ymax = 1),
+              fill = box_fill, color = NA) +
+    annotate("text",
+             x = 0.5, y = 0.5,
+             label = text,
+             fontface = fontface,
+             size = size,
+             angle = 90) +
+    scale_x_continuous(expand = c(0,0), limits = c(0,1)) +
+    scale_y_continuous(expand = c(0,0), limits = c(0,1)) +
+    coord_fixed(ratio = 12) +
+    theme_void() +
+    theme(plot.margin = margin(0,0,0,0))
+}
+
+# -----------------------
+# Header grobs
+# -----------------------
+label_col1 <- make_boxed_label("Nested vs. Unnested", size = 9)
+label_col2 <- make_boxed_label("Internal vs. External", size = 9)
+label_col3 <- make_boxed_label("Young vs. Old", size = 9)
+
+# -----------------------
+# Spacers
+# -----------------------
+header_spacer_zero <- ggplot() + theme_void() + theme(plot.margin = margin(0,0,0,0))
+vertical_spacer     <- ggplot() + theme_void()
+column_spacer       <- ggplot() + theme_void()
+bottom_spacer       <- ggplot() + theme_void()
+right_spacer        <- ggplot() + theme_void()
+top_spacer          <- ggplot() + theme_void()
+mid_spacer          <- ggplot() + theme_void()
+
+# -----------------------
+# Axis label control
+# -----------------------
+# Left column: keep y-axis title + ticks + tick labels.
+# Top row: suppress x-axis title; Bottom row: keep x-axis title.
+
+# LEFT COLUMN (Drosophila top + Mammal bottom)
+plot_architecture_drosophila <- plot_architecture_drosophila +
+  ylab(expression(log[10]*"|"*theta[1]*" - "*theta[2]*"|")) +
+  theme(
+    axis.title.x = element_blank(),     # no x-axis title on top row
+    axis.text.y  = element_text(),      # keep y tick labels
+    axis.ticks.y = element_line(),      # keep y ticks
+    axis.title.y = element_text()       # keep y-axis title
+  )
+
+plot_architecture_mammal <- plot_architecture_mammal +
+  ylab(expression(log[10]*"|"*theta[1]*" - "*theta[2]*"|")) +
+  theme(
+    axis.title.x = element_text(),      # keep x-axis title on bottom row
+    axis.text.y  = element_text(),      # keep y tick labels
+    axis.ticks.y = element_line(),      # keep y ticks
+    axis.title.y = element_text()       # keep y-axis title
+  )
+
+# MIDDLE COLUMN (suppress y-axis entirely)
+plot_tissue_type_drosophila <- plot_tissue_type_drosophila +
+  labs(y = NULL) +
+  theme(
+    axis.title.x = element_blank(),     # no x-axis title on top row
+    axis.title.y = element_blank(),
+    axis.text.y  = element_blank(),     # remove y tick labels
+    axis.ticks.y = element_blank()      # remove y ticks
+  )
+
+plot_tissue_type_mammal <- plot_tissue_type_mammal +
+  labs(y = NULL) +
+  theme(
+    axis.title.x = element_text(),      # keep x-axis title on bottom row
+    axis.title.y = element_blank(),
+    axis.text.y  = element_blank(),     # remove y tick labels
+    axis.ticks.y = element_blank()      # remove y ticks
+  )
+
+# RIGHT COLUMN (suppress y-axis entirely)
+plot_gene_age_drosophila <- plot_gene_age_drosophila +
+  labs(y = NULL) +
+  theme(
+    axis.title.x = element_blank(),     # no x-axis title on top row
+    axis.title.y = element_blank(),
+    axis.text.y  = element_blank(),     # remove y tick labels
+    axis.ticks.y = element_blank()      # remove y ticks
+  )
+
+plot_gene_age_mammal <- plot_gene_age_mammal +
+  labs(y = NULL) +
+  theme(
+    axis.title.x = element_text(),      # keep x-axis title on bottom row
+    axis.title.y = element_blank(),
+    axis.text.y  = element_blank(),     # remove y tick labels
+    axis.ticks.y = element_blank()      # remove y ticks
+  )
+
+# -----------------------
+# Column blocks
+# -----------------------
+col1_block <- plot_grid(
+  label_col1,
+  header_spacer_zero,
+  plot_architecture_drosophila,
+  vertical_spacer,
+  plot_architecture_mammal,
+  bottom_spacer,
+  ncol = 1,
+  rel_heights = c(0.08, 0.00, 0.50, 0.04, 0.50, 0.02),
+  align = "v",
+  axis = "tb"
+)
+
+col2_block <- plot_grid(
+  label_col2,
+  header_spacer_zero,
+  plot_tissue_type_drosophila,
+  vertical_spacer,
+  plot_tissue_type_mammal,
+  bottom_spacer,
+  ncol = 1,
+  rel_heights = c(0.08, 0.00, 0.50, 0.04, 0.50, 0.02),
+  align = "v",
+  axis = "tb"
+)
+
+col3_block <- plot_grid(
+  label_col3,
+  header_spacer_zero,
+  plot_gene_age_drosophila,
+  vertical_spacer,
+  plot_gene_age_mammal,
+  bottom_spacer,
+  ncol = 1,
+  rel_heights = c(0.08, 0.00, 0.50, 0.04, 0.50, 0.02),
+  align = "v",
+  axis = "tb"
+)
+
+# -----------------------
+# Right block
+# -----------------------
+right_block <- plot_grid(
+  col1_block, column_spacer, col2_block, column_spacer, col3_block,
+  ncol = 5,
+  rel_widths = c(0.31, 0.02, 0.31, 0.02, 0.31),
+  align = "h",
+  axis = "tb"
+)
+
+# -----------------------
+# Left labels column
+# -----------------------
+label_row1 <- make_vertical_boxed_label("Drosophila", size = 9, fontface = "bold.italic")
+label_row2 <- make_vertical_boxed_label("Mammals", size = 9, fontface = "bold")
+
+left_labels_column <- plot_grid(
+  top_spacer, label_row1, mid_spacer, label_row2,
+  ncol = 1,
+  rel_heights = c(0.08, 0.50, 0.04, 0.50),
+  align = "v",
+  axis = "tb"
+)
+
+# -----------------------
+# Middle expression column (shared y label on left of grid)
+# -----------------------
+label_expression <- ggplot() +
+  theme_void() +
+  annotate(
+    "text",
+    x = 0.5, y = 0.5,
+    label = expression(log[10] * "|" * theta[1] - phantom(" ") * theta[2] * "|"),
+    angle = 90,
+    size = 12,
+    color = "black"
+  ) +
+  coord_fixed(ratio = 12) +
+  theme(plot.margin = margin(0,0,0,0))
+
+expression_column <- plot_grid(
+  top_spacer, label_expression,
+  ncol = 1,
+  rel_heights = c(0.08, 0.92),
+  align = "v",
+  axis = "tb"
+)
+
+# -----------------------
+# Final layout
+# -----------------------
+main_layout <- plot_grid(
+  left_labels_column,
+  expression_column,
+  right_block,
+  right_spacer,
+  ncol = 4,
+  rel_widths = c(0.07, 0.07, 0.84, 0.02),
+  align = "h",
+  axis = "tb"
+)
+
+outer_spacer <- ggplot() + theme_void()
+final_with_border <- plot_grid(
+  outer_spacer,
+  plot_grid(outer_spacer, main_layout, outer_spacer, ncol = 3, rel_widths = c(0.01, 0.98, 0.01)),
+  outer_spacer,
+  ncol = 1, rel_heights = c(0.01, 0.98, 0.01)
+)
+
+# Save
+ggsave(
+  filename = file.path(plots_dir, "Image_11_two_rows_combined_theta_panels.png"),
+  plot = final_with_border,
+  width = 24, height = 12, dpi = 300, bg = "white"
+)
